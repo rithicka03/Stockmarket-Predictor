@@ -1,49 +1,93 @@
-pip install yfinance pandas scikit-learn matplotlib
-
-# Importing necessary libraries
-import yfinance as yf
-import pandas as pd
+# Import necessary libraries
 import numpy as np
-import matplotlib.pyplot as plt
+import pandas as pd
+import yfinance as yf
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error
+import talib as ta
 
-# Step 1: Download Historical Stock Data (e.g., Apple)
-stock_data = yf.download('AAPL', start='2010-01-01', end='2025-01-01')
+# Step 1: Collect historical stock data
+def fetch_stock_data(ticker, start_date, end_date):
+    """
+    Fetch historical stock data using Yahoo Finance API.
+    """
+    data = yf.download(ticker, start=start_date, end=end_date)
+    return data
 
-# Step 2: Prepare the Data (Features and Target)
-stock_data['Date'] = stock_data.index
-stock_data['Date'] = stock_data['Date'].map(pd.Timestamp.toordinal)
+# Step 2: Create technical indicators
+def add_technical_indicators(data):
+    """
+    Add technical indicators to the dataset.
+    """
+    # Example: Adding RSI, MACD, and Moving Averages
+    data['RSI'] = ta.RSI(data['Close'], timeperiod=14)
+    data['MACD'], data['MACD_signal'], data['MACD_hist'] = ta.MACD(data['Close'], fastperiod=12, slowperiod=26, signalperiod=9)
+    data['SMA_50'] = ta.SMA(data['Close'], timeperiod=50)
+    data['SMA_200'] = ta.SMA(data['Close'], timeperiod=200)
+    return data
 
-# We'll predict the 'Close' price, so we use it as the target
-X = stock_data[['Date']]  # Feature: Date (for simplicity)
-y = stock_data['Close']  # Target: Closing price
+# Step 3: Prepare the dataset for training
+def prepare_dataset(data):
+    """
+    Prepare the dataset by cleaning and splitting into features and target.
+    """
+    # Drop rows with NaN values (created by technical indicators)
+    data = data.dropna()
+    
+    # Define features (X) and target (y)
+    X = data[['RSI', 'MACD', 'MACD_signal', 'MACD_hist', 'SMA_50', 'SMA_200']]
+    y = data['Close']
+    
+    # Split data into training and testing sets
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+    return X_train, X_test, y_train, y_test
 
-# Step 3: Split Data into Training and Testing
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+# Step 4: Train a machine learning model
+def train_model(X_train, y_train):
+    """
+    Train a Random Forest Regressor model.
+    """
+    model = RandomForestRegressor(n_estimators=100, random_state=42)
+    model.fit(X_train, y_train)
+    return model
 
-# Step 4: Train the Model
-model = LinearRegression()
-model.fit(X_train, y_train)
+# Step 5: Evaluate the model
+def evaluate_model(model, X_test, y_test):
+    """
+    Evaluate the model using Mean Squared Error (MSE).
+    """
+    y_pred = model.predict(X_test)
+    mse = mean_squared_error(y_test, y_pred)
+    print(f"Mean Squared Error: {mse}")
+    return y_pred
 
-# Step 5: Make Predictions
-y_pred = model.predict(X_test)
+# Main function to run the project
+def main():
+    # Parameters
+    ticker = 'AAPL'  # Stock ticker symbol
+    start_date = '2020-01-01'
+    end_date = '2023-01-01'
+    
+    # Step 1: Fetch data
+    stock_data = fetch_stock_data(ticker, start_date, end_date)
+    
+    # Step 2: Add technical indicators
+    stock_data = add_technical_indicators(stock_data)
+    
+    # Step 3: Prepare dataset
+    X_train, X_test, y_train, y_test = prepare_dataset(stock_data)
+    
+    # Step 4: Train model
+    model = train_model(X_train, y_train)
+    
+    # Step 5: Evaluate model
+    predictions = evaluate_model(model, X_test, y_test)
+    
+    # Optional: Save predictions or visualize results
+    results = pd.DataFrame({'Actual': y_test, 'Predicted': predictions})
+    print(results.head())
 
-# Step 6: Evaluate the Model
-mse = mean_squared_error(y_test, y_pred)
-rmse = np.sqrt(mse)
-
-# Print evaluation metrics
-print(f"Mean Squared Error: {mse}")
-print(f"Root Mean Squared Error: {rmse}")
-
-# Step 7: Visualize the Results
-plt.figure(figsize=(10, 6))
-plt.plot(stock_data.index[-len(y_test):], y_test, label='True Prices', color='blue')
-plt.plot(stock_data.index[-len(y_test):], y_pred, label='Predicted Prices', color='red')
-plt.legend()
-plt.title('Stock Price Prediction')
-plt.xlabel('Date')
-plt.ylabel('Price')
-plt.show()
+# Run the project
+if __name__ == "__main__":
+    main()
